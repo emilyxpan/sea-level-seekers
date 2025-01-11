@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, Dataset
 import numpy as np
 from netCDF4 import Dataset as ncDataset
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 # Custom Dataset for Flooding Data
 class FloodingDataset(Dataset):
@@ -98,15 +99,31 @@ class AttentionCNN(nn.Module):
         x = self.fc(x)
         return self.sigmoid(x)
 
-# Training Function
-def train_model(model, train_loader, val_loader, num_epochs, learning_rate, device):
+import matplotlib.pyplot as plt
+import os
+
+# Training Function with Accuracy and Plot Saving
+def train_model(model, train_loader, val_loader, num_epochs, learning_rate, device, output_dir="plots"):
     criterion = nn.BCELoss()  # Binary Cross-Entropy Loss
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     model.to(device)
+    
+    # To store metrics
+    train_losses = []
+    val_losses = []
+    train_accuracies = []
+    val_accuracies = []
+
+    # Create output directory for plots if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
     for epoch in range(num_epochs):
+        # Training phase
         model.train()
         train_loss = 0.0
+        correct_train = 0
+        total_train = 0
         for inputs, labels in train_loader:
             inputs, labels = inputs.to(device), labels.to(device)
             
@@ -117,8 +134,20 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, devi
             optimizer.step()
             train_loss += loss.item()
 
-        val_loss = 0.0
+            # Calculate training accuracy
+            preds = (outputs > 0.5).float()  # Threshold at 0.5 for multi-label classification
+            correct_train += (preds == labels).sum().item()
+            total_train += labels.numel()
+
+        train_accuracy = correct_train / total_train
+        train_losses.append(train_loss / len(train_loader))
+        train_accuracies.append(train_accuracy)
+
+        # Validation phase
         model.eval()
+        val_loss = 0.0
+        correct_val = 0
+        total_val = 0
         with torch.no_grad():
             for inputs, labels in val_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
@@ -126,7 +155,49 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, devi
                 loss = criterion(outputs, labels)
                 val_loss += loss.item()
 
-        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss/len(train_loader):.4f}, Val Loss: {val_loss/len(val_loader):.4f}")
+                # Calculate validation accuracy
+                preds = (outputs > 0.5).float()
+                correct_val += (preds == labels).sum().item()
+                total_val += labels.numel()
+
+        val_accuracy = correct_val / total_val
+        val_losses.append(val_loss / len(val_loader))
+        val_accuracies.append(val_accuracy)
+
+        print(f"Epoch {epoch+1}/{num_epochs}, "
+              f"Train Loss: {train_losses[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}, "
+              f"Train Accuracy: {train_accuracies[-1]:.4f}, Val Accuracy: {val_accuracies[-1]:.4f}")
+
+    # Plotting training and validation loss
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(range(1, num_epochs + 1), train_losses, label='Train Loss')
+    plt.plot(range(1, num_epochs + 1), val_losses, label='Val Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Training and Validation Loss')
+    plt.legend()
+
+    # Save loss plot
+    loss_plot_path = os.path.join(output_dir, "loss_plot.png")
+    plt.savefig(loss_plot_path)
+    print(f"Loss plot saved to {loss_plot_path}")
+
+    # Plotting training and validation accuracy
+    plt.subplot(1, 2, 2)
+    plt.plot(range(1, num_epochs + 1), train_accuracies, label='Train Accuracy')
+    plt.plot(range(1, num_epochs + 1), val_accuracies, label='Val Accuracy')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.title('Training and Validation Accuracy')
+    plt.legend()
+
+    # Save accuracy plot
+    accuracy_plot_path = os.path.join(output_dir, "accuracy_plot.png")
+    plt.savefig(accuracy_plot_path)
+    print(f"Accuracy plot saved to {accuracy_plot_path}")
+
+    plt.close()  # Close the figure to free up memory
 
 # Main Function
 if __name__ == "__main__":
