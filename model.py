@@ -130,6 +130,8 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, devi
 
 # Main Function
 if __name__ == "__main__":
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(device)
     nc_dir = "iharp_training_dataset/Copernicus_ENA_Satelite_Maps_Training_Data"
     label_dir = "iharp_training_dataset/Flooding_Data"
     cities = ["Atlantic City", "Baltimore", "Eastport", "Fort Pulaski", 
@@ -147,4 +149,4 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 
     model = AttentionCNN()
-    train_model(model, train_loader, val_loader, num_epochs=10, learning_rate=0.001, device='cuda' if torch.cuda.is_available() else 'cpu')
+    train_model(model, train_loader, val_loader, num_epochs=10, learning_rate=0.1, device=device)
