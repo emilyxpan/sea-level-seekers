@@ -206,18 +206,29 @@ if __name__ == "__main__":
     nc_dir = "iharp_training_dataset/Copernicus_ENA_Satelite_Maps_Training_Data"
     label_dir = "iharp_training_dataset/Flooding_Data"
     cities = ["Atlantic City", "Baltimore", "Eastport", "Fort Pulaski", 
-                "Lewes", "New London", "Newport", "Portland", "Sandy Hook",
-                "Sewells Point", "The Battery", "Washington"]
+              "Lewes", "New London", "Newport", "Portland", "Sandy Hook",
+              "Sewells Point", "The Battery", "Washington"]
 
     dataset = FloodingDataset(nc_dir, label_dir, cities)
+
+    # Split dataset into train (first 80%) and validation (last 20%)
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
-    print(len(dataset))
+    # No random split, just slicing the dataset
+    train_dataset = torch.utils.data.Subset(dataset, range(0, train_size))
+    val_dataset = torch.utils.data.Subset(dataset, range(train_size, len(dataset)))
 
+    print(f"Total dataset size: {len(dataset)}")
+    print(f"Train dataset size: {len(train_dataset)}")
+    print(f"Validation dataset size: {len(val_dataset)}")
+
+    # Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 
+    # Initialize the model
     model = AttentionCNN()
+
+    # Train the model
     train_model(model, train_loader, val_loader, num_epochs=10, learning_rate=0.1, device=device)
