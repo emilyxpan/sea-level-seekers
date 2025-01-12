@@ -28,8 +28,9 @@ def calculate_metrics(outputs, labels):
     return fpr.item(), tpr.item(), f1.item()
 
 def train_model(model, train_loader, val_loader, num_epochs, learning_rate, device, output_dir="plots"):
-    positive_weight = torch.tensor([30]).to(device)  # Example weight for imbalanced classes
-    criterion = nn.BCEWithLogitsLoss(pos_weight=positive_weight)
+    # positive_weight = torch.tensor([30]).to(device)  # Example weight for imbalanced classes
+    # criterion = nn.BCEWithLogitsLoss(pos_weight=positive_weight)
+    criterion = nn.BCELoss()  # Binary Cross-Entropy Loss
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     model.to(device)
@@ -111,7 +112,8 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, devi
 
         print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_losses[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}, "
               f"Train Accuracy: {train_accuracies[-1]:.4f}, Val Accuracy: {val_accuracies[-1]:.4f}, "
-              f"Train F1: {train_f1s[-1]:.4f}, Val F1: {val_f1s[-1]:.4f}")
+              f"Train FPR: {train_fprs[-1]:.4f}, Train TPR: {train_tprs[-1]:.4f}, Train F1: {train_f1s[-1]:.4f}, "
+              f"Val FPR: {val_fprs[-1]:.4f}, Val TPR: {val_tprs[-1]:.4f}, Val F1: {val_f1s[-1]:.4f}")
 
     plot_graphs(num_epochs, train_losses, val_losses, train_accuracies, val_accuracies, output_dir)  
     
