@@ -7,9 +7,10 @@ import numpy as np
 import torch
 
 class FloodingDatasetStack(Dataset):
-    def __init__(self, nc_dir, label_dir, cities, start_year=1993, end_year=2013):
+    def __init__(self, nc_dir, label_dir, cities, stack_size = 5, start_year=1993, end_year=2013):
         self.nc_dir = nc_dir
         self.cities = cities
+        self.stack_size = stack_size
         self.data = []
         self.labels = []
         self._prepare_data(label_dir, start_year, end_year)
@@ -34,12 +35,12 @@ class FloodingDatasetStack(Dataset):
                 break
 
     def __len__(self):
-        # Ensure the dataset length accounts for the window size (4 previous + current)
-        return len(self.data) - 4
+        # Ensure the dataset length accounts for the window size
+        return len(self.data) - self.stack_size + 1
 
     def __getitem__(self, idx):
         # Load a stack of 5 consecutive time steps
-        nc_files = self.data[idx:idx + 5]
+        nc_files = self.data[idx:idx + self.stack_size]
         sea_levels = []
 
         for nc_file in nc_files:
@@ -52,7 +53,7 @@ class FloodingDatasetStack(Dataset):
         sea_levels = torch.cat(sea_levels, dim=0)  # Shape: 5x100x160
 
         # Get the label for the current time step
-        label = torch.tensor(self.labels[idx + 4], dtype=torch.float32)
+        label = torch.tensor(self.labels[idx + self.stack_size - 1], dtype=torch.float32)
 
         return sea_levels, label
 
