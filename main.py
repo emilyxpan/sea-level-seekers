@@ -6,6 +6,7 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, Dataset
 import sys
+from tqdm import tqdm
 
 from datasets import FloodingDataset, FloodingDatasetStack
 from models import CNNFeedforward, AttentionCNN, ConvLSTM
@@ -32,7 +33,7 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, devi
         train_loss = 0.0
         correct_train = 0
         total_train = 0
-        for inputs, labels in train_loader:
+        for inputs, labels in tqdm(train_loader):
             inputs, labels = inputs.to(device), labels.to(device)
             
             optimizer.zero_grad()
