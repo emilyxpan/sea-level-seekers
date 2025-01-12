@@ -9,6 +9,7 @@ import sys
 from tqdm import tqdm
 from sklearn.metrics import f1_score, precision_recall_curve, confusion_matrix
 import numpy as np
+from torch.cuda.amp import GradScaler, autocast
 
 from datasets import FloodingDataset, FloodingDatasetStack
 from models import CNNFeedforward, AttentionCNN, ConvLSTM
@@ -16,6 +17,7 @@ from models import CNNFeedforward, AttentionCNN, ConvLSTM
 def train_model(model, train_loader, val_loader, num_epochs, learning_rate, device, output_dir="plots"):
     criterion = nn.BCELoss()  # Binary Cross-Entropy Loss
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    scaler = GradScaler()  # For mixed precision
 
     model.to(device)
     
@@ -36,23 +38,28 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, devi
         all_train_labels = []
         all_train_preds = []
 
-        for inputs, labels in tqdm(train_loader):
+        for inputs, labels in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs} - Training"):
             inputs, labels = inputs.to(device), labels.to(device)
             
             optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)  # Match output shape for BCE loss
-            loss.backward()
-            optimizer.step()
+            with autocast():  # Mixed precision for forward pass
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+            
+            scaler.scale(loss).backward()  # Scaled gradient computation
+            scaler.step(optimizer)
+            scaler.update()
+
             train_loss += loss.item()
+            all_train_labels.append(labels)
+            all_train_preds.append(outputs)
 
-            # Collect predictions and labels for metrics
-            preds = (outputs > 0.5).float()
-            all_train_preds.extend(preds.cpu().numpy().flatten())
-            all_train_labels.extend(labels.cpu().numpy().flatten())
-
+        # Concatenate all predictions and labels for metric computation
+        all_train_labels = torch.cat(all_train_labels).cpu().numpy()
+        all_train_preds = (torch.cat(all_train_preds).cpu().numpy() > 0.5).astype(float)
+        
         # Calculate training metrics
-        train_accuracy = sum(np.array(all_train_preds) == np.array(all_train_labels)) / len(all_train_labels)
+        train_accuracy = np.mean(all_train_preds == all_train_labels)
         train_f1 = f1_score(all_train_labels, all_train_preds)
         tn, fp, fn, tp = confusion_matrix(all_train_labels, all_train_preds).ravel()
         train_fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
@@ -71,18 +78,21 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, devi
         all_val_preds = []
 
         with torch.no_grad():
-            for inputs, labels in val_loader:
+            for inputs, labels in tqdm(val_loader, desc=f"Epoch {epoch+1}/{num_epochs} - Validation"):
                 inputs, labels = inputs.to(device), labels.to(device)
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                with autocast():
+                    outputs = model(inputs)
+                    loss = criterion(outputs, labels)
                 val_loss += loss.item()
+                all_val_labels.append(labels)
+                all_val_preds.append(outputs)
 
-                preds = (outputs > 0.5).float()
-                all_val_preds.extend(preds.cpu().numpy().flatten())
-                all_val_labels.extend(labels.cpu().numpy().flatten())
-
+        # Concatenate all predictions and labels for metric computation
+        all_val_labels = torch.cat(all_val_labels).cpu().numpy()
+        all_val_preds = (torch.cat(all_val_preds).cpu().numpy() > 0.5).astype(float)
+        
         # Calculate validation metrics
-        val_accuracy = sum(np.array(all_val_preds) == np.array(all_val_labels)) / len(all_val_labels)
+        val_accuracy = np.mean(all_val_preds == all_val_labels)
         val_f1 = f1_score(all_val_labels, all_val_preds)
         tn, fp, fn, tp = confusion_matrix(all_val_labels, all_val_preds).ravel()
         val_fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
