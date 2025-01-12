@@ -37,7 +37,9 @@ To evaluate the model, use the following command:
 python main.py load_model [path to model]
 ```
 
-Note that this will load in a model in the main.py file. To use the model for a specific task, please add your own code using 
+Note that this will load in a model in the main.py file. Some trained models are available in the top level directory.
+
+To use the model for a specific task, please add your own code using 
 ```bash
 outputs = model(inputs)
 ```
