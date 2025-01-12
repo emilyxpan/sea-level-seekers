@@ -163,46 +163,54 @@ if __name__ == "__main__":
     # Check for command-line arguments
     model_flag = sys.argv[1] if len(sys.argv) > 1 else "CNNFeedforward"  # Default model is CNNFeedforward
 
-    # Set device based on availability of GPU
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(device)
-
-    # Directories for data
-    nc_dir = "iharp_training_dataset/Copernicus_ENA_Satelite_Maps_Training_Data"
-    label_dir = "iharp_training_dataset/Flooding_Data"
-    cities = ["Atlantic City", "Baltimore", "Eastport", "Fort Pulaski", 
-              "Lewes", "New London", "Newport", "Portland", "Sandy Hook",
-              "Sewells Point", "The Battery", "Washington"]
-
-    # Load dataset
-    if model_flag != "ConvLSTM":
-        dataset = FloodingDataset(nc_dir, label_dir, cities)
-    else:
-        dataset = FloodingDatasetStack(nc_dir, label_dir, cities, stack_size = 5)
-
-    # Split dataset into train and validation
-    train_size = int(0.8 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset = torch.utils.data.Subset(dataset, range(0, train_size))
-    val_dataset = torch.utils.data.Subset(dataset, range(train_size, len(dataset)))
-
-    print(f"Total dataset size: {len(dataset)}")
-    print(f"Train dataset size: {len(train_dataset)}")
-    print(f"Validation dataset size: {len(val_dataset)}")
-
-    # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-
-    # Initialize the model based on the command-line flag
-    if model_flag == "AttentionCNN":
-        model = AttentionCNN()
-    elif model_flag == "CNNFF":
-        model = CNNFeedforward()
-    elif model_flag == "ConvLSTM":
+    if model_flag == "load_model":
+        model_path = sys.argv[2]
         model = ConvLSTM(input_channels=5, hidden_channels=64, kernel_size=3, num_classes=12)
-
-    # Train the model
-    train_model(model, train_loader, val_loader, num_epochs=10, learning_rate=0.00005, device=device)
-
-    torch.save(model.state_dict(), "model_weights.pth")
+        model.load_state_dict(torch.load(model_path))
+        model.eval()  
+        print("Model loaded successfully!")
+    else:
+            
+        # Set device based on availability of GPU
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(device)
+    
+        # Directories for data
+        nc_dir = "iharp_training_dataset/Copernicus_ENA_Satelite_Maps_Training_Data"
+        label_dir = "iharp_training_dataset/Flooding_Data"
+        cities = ["Atlantic City", "Baltimore", "Eastport", "Fort Pulaski", 
+                  "Lewes", "New London", "Newport", "Portland", "Sandy Hook",
+                  "Sewells Point", "The Battery", "Washington"]
+    
+        # Load dataset
+        if model_flag != "ConvLSTM":
+            dataset = FloodingDataset(nc_dir, label_dir, cities)
+        else:
+            dataset = FloodingDatasetStack(nc_dir, label_dir, cities, stack_size = 5)
+    
+        # Split dataset into train and validation
+        train_size = int(0.8 * len(dataset))
+        val_size = len(dataset) - train_size
+        train_dataset = torch.utils.data.Subset(dataset, range(0, train_size))
+        val_dataset = torch.utils.data.Subset(dataset, range(train_size, len(dataset)))
+    
+        print(f"Total dataset size: {len(dataset)}")
+        print(f"Train dataset size: {len(train_dataset)}")
+        print(f"Validation dataset size: {len(val_dataset)}")
+    
+        # Create data loaders
+        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False)
+        val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+    
+        # Initialize the model based on the command-line flag
+        if model_flag == "AttentionCNN":
+            model = AttentionCNN()
+        elif model_flag == "CNNFF":
+            model = CNNFeedforward()
+        elif model_flag == "ConvLSTM":
+            model = ConvLSTM(input_channels=5, hidden_channels=64, kernel_size=3, num_classes=12)
+    
+        # Train the model
+        train_model(model, train_loader, val_loader, num_epochs=4, learning_rate=0.0001, device=device)
+    
+        torch.save(model.state_dict(), "model_weights.pth")
