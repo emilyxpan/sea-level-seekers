@@ -11,18 +11,36 @@ from tqdm import tqdm
 from datasets import FloodingDataset, FloodingDatasetStack
 from models import CNNFeedforward, AttentionCNN, ConvLSTM
 
-# Training Function with Accuracy and Plot Saving
+def calculate_metrics(outputs, labels):
+    preds = (outputs > 0.5).float()
+    tp = (preds * labels).sum()  # True Positives
+    fp = (preds * (1 - labels)).sum()  # False Positives
+    fn = ((1 - preds) * labels).sum()  # False Negatives
+    tn = ((1 - preds) * (1 - labels)).sum()  # True Negatives
+
+    # Calculate rates and scores
+    tpr = tp / (tp + fn + 1e-8)  # True Positive Rate
+    fpr = fp / (fp + tn + 1e-8)  # False Positive Rate
+    precision = tp / (tp + fp + 1e-8)
+    recall = tpr
+    f1 = 2 * (precision * recall) / (precision + recall + 1e-8)
+
+    return fpr.item(), tpr.item(), f1.item()
+
 def train_model(model, train_loader, val_loader, num_epochs, learning_rate, device, output_dir="plots"):
-    criterion = nn.BCELoss()  # Binary Cross-Entropy Loss
+    positive_weight = torch.tensor([30]).to(device)  # Example weight for imbalanced classes
+    criterion = nn.BCEWithLogitsLoss(pos_weight=positive_weight)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     model.to(device)
-    
+
     # To store metrics
     train_losses = []
     val_losses = []
     train_accuracies = []
     val_accuracies = []
+    train_fprs, train_tprs, train_f1s = [], [], []
+    val_fprs, val_tprs, val_f1s = [], [], []
 
     # Create output directory for plots if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
@@ -33,30 +51,41 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, devi
         train_loss = 0.0
         correct_train = 0
         total_train = 0
+        epoch_fprs, epoch_tprs, epoch_f1s = [], [], []
+
         for inputs, labels in tqdm(train_loader):
             inputs, labels = inputs.to(device), labels.to(device)
-            
+
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = criterion(outputs, labels)  # Match output shape for BCE loss
+            loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
 
-            # Calculate training accuracy
-            preds = (outputs > 0.5).float()  # Threshold at 0.5 for multi-label classification
+            # Calculate metrics
+            preds = (outputs > 0.5).float()
             correct_train += (preds == labels).sum().item()
             total_train += labels.numel()
 
-        train_accuracy = correct_train / total_train
+            fpr, tpr, f1 = calculate_metrics(outputs, labels)
+            epoch_fprs.append(fpr)
+            epoch_tprs.append(tpr)
+            epoch_f1s.append(f1)
+
         train_losses.append(train_loss / len(train_loader))
-        train_accuracies.append(train_accuracy)
+        train_accuracies.append(correct_train / total_train)
+        train_fprs.append(sum(epoch_fprs) / len(epoch_fprs))
+        train_tprs.append(sum(epoch_tprs) / len(epoch_tprs))
+        train_f1s.append(sum(epoch_f1s) / len(epoch_f1s))
 
         # Validation phase
         model.eval()
         val_loss = 0.0
         correct_val = 0
         total_val = 0
+        epoch_fprs, epoch_tprs, epoch_f1s = [], [], []
+
         with torch.no_grad():
             for inputs, labels in val_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
@@ -64,20 +93,27 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, devi
                 loss = criterion(outputs, labels)
                 val_loss += loss.item()
 
-                # Calculate validation accuracy
+                # Calculate metrics
                 preds = (outputs > 0.5).float()
                 correct_val += (preds == labels).sum().item()
                 total_val += labels.numel()
 
-        val_accuracy = correct_val / total_val
-        val_losses.append(val_loss / len(val_loader))
-        val_accuracies.append(val_accuracy)
+                fpr, tpr, f1 = calculate_metrics(outputs, labels)
+                epoch_fprs.append(fpr)
+                epoch_tprs.append(tpr)
+                epoch_f1s.append(f1)
 
-        print(f"Epoch {epoch+1}/{num_epochs}, "
-              f"Train Loss: {train_losses[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}, "
-              f"Train Accuracy: {train_accuracies[-1]:.4f}, Val Accuracy: {val_accuracies[-1]:.4f}")
-        
-    plot_graphs(num_epochs, train_losses, val_losses, train_accuracies, val_accuracies, output_dir)
+        val_losses.append(val_loss / len(val_loader))
+        val_accuracies.append(correct_val / total_val)
+        val_fprs.append(sum(epoch_fprs) / len(epoch_fprs))
+        val_tprs.append(sum(epoch_tprs) / len(epoch_tprs))
+        val_f1s.append(sum(epoch_f1s) / len(epoch_f1s))
+
+        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_losses[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}, "
+              f"Train Accuracy: {train_accuracies[-1]:.4f}, Val Accuracy: {val_accuracies[-1]:.4f}, "
+              f"Train F1: {train_f1s[-1]:.4f}, Val F1: {val_f1s[-1]:.4f}")
+
+    plot_graphs(num_epochs, train_losses, val_losses, train_accuracies, val_accuracies, output_dir)  
     
 def plot_graphs(num_epochs, train_losses, val_losses, train_accuracies, val_accuracies, output_dir):
     # Plotting training and validation loss
