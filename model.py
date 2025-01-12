@@ -9,6 +9,9 @@ from netCDF4 import Dataset as ncDataset
 from datetime import datetime
 import matplotlib.pyplot as plt
 
+
+torch.manual_seed(42)
+
 # Custom Dataset for Flooding Data
 class FloodingDataset(Dataset):
     def __init__(self, nc_dir, label_dir, cities, start_year=1993, end_year=2013):
@@ -88,9 +91,9 @@ class CNNFeedforward(nn.Module):
 
     def forward(self, x):
         # Apply convolutional layers with ReLU activation and max pooling
-        x = self.pool(self.relu(self.conv1(x)))
-        x = self.pool(self.relu(self.conv2(x)))
-        x = self.pool(self.relu(self.conv3(x)))
+        x = self.pool((self.conv1(x)))
+        x = self.pool((self.conv2(x)))
+        x = self.pool((self.conv3(x)))
 
         # Flatten the tensor for feedforward layers
         x = x.view(x.size(0), -1)
@@ -270,4 +273,4 @@ if __name__ == "__main__":
     model = CNNFeedforward()
 
     # Train the model
-    train_model(model, train_loader, val_loader, num_epochs=10, learning_rate=0.1, device=device)
+    train_model(model, train_loader, val_loader, num_epochs=20, learning_rate=0.0001, device=device)
