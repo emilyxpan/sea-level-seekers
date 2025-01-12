@@ -28,9 +28,9 @@ def calculate_metrics(outputs, labels):
     return fpr.item(), tpr.item(), f1.item()
 
 def train_model(model, train_loader, val_loader, num_epochs, learning_rate, device, output_dir="plots"):
-    # positive_weight = torch.tensor([30]).to(device)  # Example weight for imbalanced classes
-    # criterion = nn.BCEWithLogitsLoss(pos_weight=positive_weight)
-    criterion = nn.BCELoss()  # Binary Cross-Entropy Loss
+    positive_weight = torch.tensor([30]).to(device)  # Example weight for imbalanced classes
+    criterion = nn.BCEWithLogitsLoss(pos_weight=positive_weight)
+    # criterion = nn.BCELoss()  # Binary Cross-Entropy Loss
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     model.to(device)
@@ -203,4 +203,6 @@ if __name__ == "__main__":
         model = ConvLSTM(input_channels=5, hidden_channels=64, kernel_size=3, num_classes=12)
 
     # Train the model
-    train_model(model, train_loader, val_loader, num_epochs=10, learning_rate=0.0001, device=device)
+    train_model(model, train_loader, val_loader, num_epochs=10, learning_rate=0.00005, device=device)
+
+    torch.save(model.state_dict(), "model_weights.pth")
