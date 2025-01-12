@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, Dataset
 import numpy as np
 from netCDF4 import Dataset as ncDataset
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 # Custom Dataset for Flooding Data
 class FloodingDataset(Dataset):
@@ -64,6 +65,44 @@ class FloodingDataset(Dataset):
         label = torch.tensor(self.labels[idx], dtype=torch.float32)
         return sea_level, label
 
+class CNNFeedforward(nn.Module):
+    def __init__(self, input_shape=(1, 100, 160), num_classes=12):
+        super(CNNFeedforward, self).__init__()
+        # Convolutional layers
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
+        self.pool = nn.MaxPool2d(2, 2)
+
+        # Flattened size calculation after pooling layers
+        flattened_size = (input_shape[1] // 8) * (input_shape[2] // 8) * 128
+        
+        # Feedforward layers
+        self.fc1 = nn.Linear(flattened_size, 512)
+        self.fc2 = nn.Linear(512, 256)
+        self.fc3 = nn.Linear(256, num_classes)
+
+        # Activation function
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        # Apply convolutional layers with ReLU activation and max pooling
+        x = self.pool(self.relu(self.conv1(x)))
+        x = self.pool(self.relu(self.conv2(x)))
+        x = self.pool(self.relu(self.conv3(x)))
+
+        # Flatten the tensor for feedforward layers
+        x = x.view(x.size(0), -1)
+
+        # Apply feedforward layers
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
+        x = self.fc3(x)
+
+        # Apply sigmoid activation for multi-class classification
+        return self.sigmoid(x)
+
 # Attention-based CNN Architecture
 class AttentionCNN(nn.Module):
     def __init__(self, input_shape=(1, 100, 160), num_classes=12):
@@ -98,15 +137,31 @@ class AttentionCNN(nn.Module):
         x = self.fc(x)
         return self.sigmoid(x)
 
-# Training Function
-def train_model(model, train_loader, val_loader, num_epochs, learning_rate, device):
+import matplotlib.pyplot as plt
+import os
+
+# Training Function with Accuracy and Plot Saving
+def train_model(model, train_loader, val_loader, num_epochs, learning_rate, device, output_dir="plots"):
     criterion = nn.BCELoss()  # Binary Cross-Entropy Loss
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     model.to(device)
+    
+    # To store metrics
+    train_losses = []
+    val_losses = []
+    train_accuracies = []
+    val_accuracies = []
+
+    # Create output directory for plots if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
     for epoch in range(num_epochs):
+        # Training phase
         model.train()
         train_loss = 0.0
+        correct_train = 0
+        total_train = 0
         for inputs, labels in train_loader:
             inputs, labels = inputs.to(device), labels.to(device)
             
@@ -117,8 +172,20 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, devi
             optimizer.step()
             train_loss += loss.item()
 
-        val_loss = 0.0
+            # Calculate training accuracy
+            preds = (outputs > 0.5).float()  # Threshold at 0.5 for multi-label classification
+            correct_train += (preds == labels).sum().item()
+            total_train += labels.numel()
+
+        train_accuracy = correct_train / total_train
+        train_losses.append(train_loss / len(train_loader))
+        train_accuracies.append(train_accuracy)
+
+        # Validation phase
         model.eval()
+        val_loss = 0.0
+        correct_val = 0
+        total_val = 0
         with torch.no_grad():
             for inputs, labels in val_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
@@ -126,7 +193,49 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, devi
                 loss = criterion(outputs, labels)
                 val_loss += loss.item()
 
-        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss/len(train_loader):.4f}, Val Loss: {val_loss/len(val_loader):.4f}")
+                # Calculate validation accuracy
+                preds = (outputs > 0.5).float()
+                correct_val += (preds == labels).sum().item()
+                total_val += labels.numel()
+
+        val_accuracy = correct_val / total_val
+        val_losses.append(val_loss / len(val_loader))
+        val_accuracies.append(val_accuracy)
+
+        print(f"Epoch {epoch+1}/{num_epochs}, "
+              f"Train Loss: {train_losses[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}, "
+              f"Train Accuracy: {train_accuracies[-1]:.4f}, Val Accuracy: {val_accuracies[-1]:.4f}")
+
+    # Plotting training and validation loss
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(range(1, num_epochs + 1), train_losses, label='Train Loss')
+    plt.plot(range(1, num_epochs + 1), val_losses, label='Val Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Training and Validation Loss')
+    plt.legend()
+
+    # Save loss plot
+    loss_plot_path = os.path.join(output_dir, "loss_plot.png")
+    plt.savefig(loss_plot_path)
+    print(f"Loss plot saved to {loss_plot_path}")
+
+    # Plotting training and validation accuracy
+    plt.subplot(1, 2, 2)
+    plt.plot(range(1, num_epochs + 1), train_accuracies, label='Train Accuracy')
+    plt.plot(range(1, num_epochs + 1), val_accuracies, label='Val Accuracy')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.title('Training and Validation Accuracy')
+    plt.legend()
+
+    # Save accuracy plot
+    accuracy_plot_path = os.path.join(output_dir, "accuracy_plot.png")
+    plt.savefig(accuracy_plot_path)
+    print(f"Accuracy plot saved to {accuracy_plot_path}")
+
+    plt.close()  # Close the figure to free up memory
 
 # Main Function
 if __name__ == "__main__":
@@ -135,18 +244,30 @@ if __name__ == "__main__":
     nc_dir = "iharp_training_dataset/Copernicus_ENA_Satelite_Maps_Training_Data"
     label_dir = "iharp_training_dataset/Flooding_Data"
     cities = ["Atlantic City", "Baltimore", "Eastport", "Fort Pulaski", 
-                "Lewes", "New London", "Newport", "Portland", "Sandy Hook",
-                "Sewells Point", "The Battery", "Washington"]
+              "Lewes", "New London", "Newport", "Portland", "Sandy Hook",
+              "Sewells Point", "The Battery", "Washington"]
 
     dataset = FloodingDataset(nc_dir, label_dir, cities)
+
+    # Split dataset into train (first 80%) and validation (last 20%)
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
-    print(len(dataset))
+    # No random split, just slicing the dataset
+    train_dataset = torch.utils.data.Subset(dataset, range(0, train_size))
+    val_dataset = torch.utils.data.Subset(dataset, range(train_size, len(dataset)))
 
+    print(f"Total dataset size: {len(dataset)}")
+    print(f"Train dataset size: {len(train_dataset)}")
+    print(f"Validation dataset size: {len(val_dataset)}")
+
+    # Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 
+    # Initialize the model
     model = AttentionCNN()
-    train_model(model, train_loader, val_loader, num_epochs=10, learning_rate=0.1, device=device)
+    # model = CNNFeedforward()
+
+    # Train the model
+    train_model(model, train_loader, val_loader, num_epochs=10, learning_rate=0.001, device=device)
